@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import JournalDetailClient from "@/components/JournalDetailClient";
 
 // Function to parse markdown images and convert to React elements
 function parseTextWithImages(text: string | null) {
@@ -35,6 +36,7 @@ function parseTextWithImages(text: string | null) {
           borderRadius: "4px",
           display: "block"
         }}
+        crossOrigin="anonymous"
       />
     );
 
@@ -69,27 +71,12 @@ export default async function JournalDetailPage({ params }: { params: Promise<{ 
     );
   }
 
+  const parsedText = parseTextWithImages(entry.text);
+
   return (
-    <main style={{ padding: "2rem", maxWidth: "800px", margin: "0 auto" }}>
-      <h1 style={{ textAlign: "center", fontSize: "2.5rem", marginBottom: "0.5rem" }}>{entry.title}</h1>
-      <p style={{ textAlign: "center", fontSize: "1rem", color: "#666", marginBottom: "1.5rem" }}>
-        By {entry.author} - {entry.date ? new Date(entry.date).toLocaleDateString() : ''}
-      </p>
-      {entry.image && (
-        <img
-          src={entry.image}
-          alt={entry.title || "Journal entry"}
-          style={{ width: "100%", height: "auto", marginBottom: "0.5rem", borderRadius: "4px" }}
-        />
-      )}
-      {entry.caption && (
-        <p style={{ textAlign: "center", fontSize: "0.875rem", color: "#888", fontStyle: "italic", marginBottom: "1rem" }}>
-          {entry.caption}
-        </p>
-      )}
-      <div style={{ whiteSpace: "pre-wrap" }}>
-        {parseTextWithImages(entry.text)}
-      </div>
-    </main>
+    <JournalDetailClient
+      entry={entry}
+      parsedText={parsedText}
+    />
   );
 }
