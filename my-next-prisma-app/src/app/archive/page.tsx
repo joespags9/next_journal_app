@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 
 type Entry = {
   id: number;
@@ -15,6 +16,7 @@ type Entry = {
 
 export default function ArchivePage() {
   const [entries, setEntries] = useState<Entry[]>([]);
+  const router = useRouter();
 
   // Fetch entries
   useEffect(() => {
@@ -23,46 +25,76 @@ export default function ArchivePage() {
       .then(setEntries);
   }, []);
 
-  return (
-    <main style={{ padding: "2rem", maxWidth: "1400px", margin: "0 auto" }}>
+  const handleDelete = async (e: React.MouseEvent, id: number) => {
+    e.preventDefault(); // Prevent navigation to detail page
+    e.stopPropagation();
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: "1rem" }}>
+    if (window.confirm("Are you sure you want to delete this entry?")) {
+      try {
+        const res = await fetch(`/api/entries/${id}`, {
+          method: "DELETE",
+        });
+
+        if (res.ok) {
+          // Remove the entry from the state
+          setEntries(entries.filter(entry => entry.id !== id));
+        } else {
+          alert("Failed to delete entry");
+        }
+      } catch (error) {
+        console.error("Error deleting entry:", error);
+        alert("Error deleting entry");
+      }
+    }
+  };
+
+  const handleEdit = (e: React.MouseEvent, id: number) => {
+    e.preventDefault(); // Prevent navigation to detail page
+    e.stopPropagation();
+    router.push(`/edit-entry/${id}`);
+  };
+
+  return (
+    <main className="p-8 max-w-[1400px] mx-auto">
+      <div className="grid grid-cols-5 gap-4">
         {entries.map((entry) => (
-          <Link
-            key={entry.id}
-            href={`/journals/${entry.id}`}
-            style={{ textDecoration: "none", color: "inherit" }}
-          >
-            <div
-              style={{
-                padding: "1rem",
-                border: "2px solid #ccc",
-                borderRadius: "8px",
-                backgroundColor: "white",
-                cursor: "pointer",
-                transition: "transform 0.2s, box-shadow 0.2s",
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.transform = "translateY(-4px)";
-                e.currentTarget.style.boxShadow = "0 4px 8px rgba(0,0,0,0.1)";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.transform = "translateY(0)";
-                e.currentTarget.style.boxShadow = "none";
-              }}
+          <div key={entry.id} className="relative group h-full">
+            <Link
+              href={`/journals/${entry.id}`}
+              className="no-underline text-inherit block h-full"
             >
-              {entry.image && (
-                <img
-                  src={entry.image}
-                  alt={entry.title || "Journal entry"}
-                  style={{ width: "100%", height: "auto", marginBottom: "0.5rem", borderRadius: "4px" }}
-                />
-              )}
-              <h3 style={{ fontSize: "1rem", margin: "0.5rem 0" }}>{entry.title}</h3>
-              {entry.author && <p style={{ fontSize: "0.875rem", margin: "0.25rem 0" }}><em>By {entry.author}</em></p>}
-              {entry.caption && <p style={{ fontSize: "0.875rem", margin: "0.25rem 0" }}><strong>{entry.caption}</strong></p>}
+              <div className="p-4 border-2 border-gray-300 rounded-lg bg-white cursor-pointer transition-all duration-200 hover:-translate-y-1 hover:shadow-md h-full flex flex-col">
+                {entry.image && (
+                  <img
+                    src={entry.image}
+                    alt={entry.title || "Journal entry"}
+                    className="w-full h-48 object-cover mb-2 rounded"
+                  />
+                )}
+                <h3 className="text-base my-2">{entry.title}</h3>
+                {entry.author && <p className="text-sm my-1"><em>By {entry.author}</em></p>}
+                {entry.caption && <p className="text-sm my-1"><strong>{entry.caption}</strong></p>}
+              </div>
+            </Link>
+
+            {/* Edit and Delete buttons */}
+            <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+              <button
+                onClick={(e) => handleEdit(e, entry.id)}
+                className="px-2 py-1 bg-blue-500 text-white text-xs rounded hover:bg-blue-600 transition-colors"
+                title="Edit"
+              >
+                Edit
+              </button>
+              <button
+                onClick={(e) => handleDelete(e, entry.id)}
+                className="px-2 py-1 bg-red-500 text-white text-xs rounded hover:bg-red-600 transition-colors"
+                title="Delete"
+              >
+                Delete
+              </button>
             </div>
-          </Link>
+          </div>
         ))}
       </div>
     </main>

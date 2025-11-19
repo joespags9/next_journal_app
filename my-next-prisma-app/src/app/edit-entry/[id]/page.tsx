@@ -9,7 +9,8 @@ import FormatUnderlinedIcon from "@mui/icons-material/FormatUnderlined";
 import StrikethroughSIcon from "@mui/icons-material/StrikethroughS";
 import FormatColorTextIcon from "@mui/icons-material/FormatColorText";
 
-export default function NewEntryPage() {
+export default function EditEntryPage({ params }: { params: Promise<{ id: string }> }) {
+  const [id, setId] = useState<string | null>(null);
   const [title, setTitle] = useState("");
   const [author, setAuthor] = useState("");
   const [caption, setCaption] = useState("");
@@ -25,10 +26,36 @@ export default function NewEntryPage() {
   const [isStrikethrough, setIsStrikethrough] = useState(false);
   const [textColor, setTextColor] = useState("#000000");
   const [showColorPicker, setShowColorPicker] = useState(false);
+  const [loading, setLoading] = useState(true);
   const colorPickerRef = useRef<HTMLDivElement>(null);
   const contentEditableRef = useRef<HTMLDivElement>(null);
   const previousTabRef = useRef<"descriptors" | "text" | "preview">("descriptors");
   const router = useRouter();
+
+  // Load existing entry data
+  useEffect(() => {
+    async function loadEntry() {
+      const resolvedParams = await params;
+      setId(resolvedParams.id);
+
+      try {
+        const res = await fetch(`/api/entries/${resolvedParams.id}`);
+        if (res.ok) {
+          const entry = await res.json();
+          setTitle(entry.title || "");
+          setAuthor(entry.author || "");
+          setCaption(entry.caption || "");
+          setImage(entry.image || "");
+          setText(entry.text || "");
+        }
+      } catch (error) {
+        console.error("Error loading entry:", error);
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadEntry();
+  }, [params]);
 
   // Close color picker when clicking outside
   useEffect(() => {
@@ -149,21 +176,23 @@ export default function NewEntryPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const res = await fetch("/api/entries", {
-      method: "POST",
+
+    if (!id) {
+      alert("Entry ID not found");
+      return;
+    }
+
+    const res = await fetch(`/api/entries/${id}`, {
+      method: "PUT",
       body: JSON.stringify({ title, author, caption, image, text }),
       headers: { "Content-Type": "application/json" },
     });
 
     if (res.ok) {
-      // Clear form
-      setTitle("");
-      setAuthor("");
-      setCaption("");
-      setImage("");
-      setText("");
-      // Redirect to archive page
-      router.push("/archive");
+      // Redirect to the updated entry's detail page
+      router.push(`/journals/${id}`);
+    } else {
+      alert("Failed to update entry");
     }
   };
 
@@ -295,6 +324,14 @@ export default function NewEntryPage() {
     }
 
     return parts.length > 0 ? parts : text;
+  }
+
+  if (loading) {
+    return (
+      <main style={{ padding: "2rem", maxWidth: "800px", margin: "0 auto", textAlign: "center" }}>
+        <h1>Loading entry...</h1>
+      </main>
+    );
   }
 
   return (
@@ -805,17 +842,18 @@ export default function NewEntryPage() {
             <div style={{ display: "flex", justifyContent: "center", marginTop: "2rem" }}>
               <button
                 type="submit"
+                disabled={loading}
                 style={{
                   padding: "0.75rem 1.5rem",
-                  cursor: "pointer",
+                  cursor: loading ? "not-allowed" : "pointer",
                   border: "2px solid #ccc",
                   borderRadius: "4px",
-                  backgroundColor: "rgba(42, 40, 41)",
+                  backgroundColor: loading ? "#999" : "rgba(42, 40, 41)",
                   color: "white",
                   fontWeight: "bold"
                 }}
               >
-                Add Entry
+                {loading ? "Loading..." : "Update Entry"}
               </button>
             </div>
           </div>

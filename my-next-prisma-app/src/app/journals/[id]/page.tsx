@@ -1,5 +1,58 @@
 import { prisma } from "@/lib/prisma";
 
+// Function to parse markdown images and convert to React elements
+function parseTextWithImages(text: string | null) {
+  if (!text) return null;
+
+  // Regex to match markdown image syntax: ![alt](src)
+  const imageRegex = /!\[([^\]]*)\]\(([^)]+)\)/g;
+  const parts = [];
+  let lastIndex = 0;
+  let match;
+
+  while ((match = imageRegex.exec(text)) !== null) {
+    // Add text before the image
+    if (match.index > lastIndex) {
+      parts.push(
+        <span key={`text-${lastIndex}`}>
+          {text.substring(lastIndex, match.index)}
+        </span>
+      );
+    }
+
+    // Add the image
+    const altText = match[1];
+    const imageSrc = match[2];
+    parts.push(
+      <img
+        key={`img-${match.index}`}
+        src={imageSrc}
+        alt={altText}
+        style={{
+          maxWidth: "100%",
+          height: "auto",
+          margin: "1rem 0",
+          borderRadius: "4px",
+          display: "block"
+        }}
+      />
+    );
+
+    lastIndex = imageRegex.lastIndex;
+  }
+
+  // Add remaining text after the last image
+  if (lastIndex < text.length) {
+    parts.push(
+      <span key={`text-${lastIndex}`}>
+        {text.substring(lastIndex)}
+      </span>
+    );
+  }
+
+  return parts.length > 0 ? parts : text;
+}
+
 export default async function JournalDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id: idString } = await params;
   const id = Number(idString);
@@ -34,7 +87,9 @@ export default async function JournalDetailPage({ params }: { params: Promise<{ 
           {entry.caption}
         </p>
       )}
-      <p>{entry.text}</p>
+      <div style={{ whiteSpace: "pre-wrap" }}>
+        {parseTextWithImages(entry.text)}
+      </div>
     </main>
   );
 }

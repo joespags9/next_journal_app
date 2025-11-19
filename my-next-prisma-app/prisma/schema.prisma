@@ -12,7 +12,7 @@ model journals {
   id      Int       @id @default(autoincrement())
   title   String?   @db.VarChar(255)
   author  String?   @db.VarChar(255)
-  date    DateTime? @default(dbgenerated("CURRENT_DATE")) @db.Date
+  date    DateTime? @default(now())
   caption String?   @db.VarChar(255)
   image   String?
   text    String?
