@@ -28,6 +28,7 @@ export default function NewEntryPage() {
   const colorPickerRef = useRef<HTMLDivElement>(null);
   const contentEditableRef = useRef<HTMLDivElement>(null);
   const previousTabRef = useRef<"descriptors" | "text" | "preview">("descriptors");
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
 
   // Close color picker when clicking outside
@@ -195,6 +196,27 @@ export default function NewEntryPage() {
         reader.readAsDataURL(file);
       }
     }
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (files && files[0]) {
+      const file = files[0];
+      if (file.type.startsWith("image/")) {
+        // Convert image to base64 data URL
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          if (event.target?.result) {
+            setImage(event.target.result as string);
+          }
+        };
+        reader.readAsDataURL(file);
+      }
+    }
+  };
+
+  const handleDropAreaClick = () => {
+    fileInputRef.current?.click();
   };
 
   const handleTextAreaDragOver = (e: React.DragEvent) => {
@@ -448,6 +470,7 @@ export default function NewEntryPage() {
                 onDragOver={handleDragOver}
                 onDragLeave={handleDragLeave}
                 onDrop={handleDrop}
+                onClick={handleDropAreaClick}
                 style={{
                   flex: "0 0 66.666%",
                   minHeight: "0",
@@ -474,10 +497,17 @@ export default function NewEntryPage() {
                   />
                 ) : (
                   <p style={{ color: "#999", fontSize: "0.9rem", textAlign: "center", padding: "1rem" }}>
-                    Drop Image Here
+                    Drop Image Here or Click to Select
                   </p>
                 )}
               </div>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleFileSelect}
+                style={{ display: "none" }}
+              />
             </div>
           </div>
         )}
