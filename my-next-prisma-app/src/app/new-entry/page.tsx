@@ -8,6 +8,7 @@ import FormatItalicIcon from "@mui/icons-material/FormatItalic";
 import FormatUnderlinedIcon from "@mui/icons-material/FormatUnderlined";
 import StrikethroughSIcon from "@mui/icons-material/StrikethroughS";
 import FormatColorTextIcon from "@mui/icons-material/FormatColorText";
+import InsertLinkIcon from "@mui/icons-material/InsertLink";
 
 export default function NewEntryPage() {
   const [title, setTitle] = useState("");
@@ -219,6 +220,54 @@ export default function NewEntryPage() {
     fileInputRef.current?.click();
   };
 
+  const handleAddLink = () => {
+    const url = prompt("Enter the URL:");
+    if (!url) return;
+
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0) {
+      alert("Please select some text first");
+      return;
+    }
+
+    const range = selection.getRangeAt(0);
+    const selectedText = range.toString();
+
+    if (!selectedText) {
+      alert("Please select some text first");
+      return;
+    }
+
+    const link = document.createElement("a");
+    link.href = url;
+    link.textContent = selectedText;
+    link.style.color = "#0070f3";
+    link.style.textDecoration = "underline";
+    link.target = "_blank";
+
+    range.deleteContents();
+    range.insertNode(link);
+
+    // Update the text state
+    if (contentEditableRef.current) {
+      let content = "";
+      contentEditableRef.current.childNodes.forEach(node => {
+        if (node.nodeName === "A") {
+          const anchor = node as HTMLAnchorElement;
+          content += `[${anchor.textContent}](${anchor.href})`;
+        } else if (node.nodeName === "IMG") {
+          const img = node as HTMLImageElement;
+          content += `\n![Image](${img.src})\n`;
+        } else if (node.nodeName === "BR") {
+          content += "\n";
+        } else {
+          content += node.textContent || "";
+        }
+      });
+      setText(content);
+    }
+  };
+
   const handleTextAreaDragOver = (e: React.DragEvent) => {
     e.preventDefault();
   };
@@ -320,7 +369,7 @@ export default function NewEntryPage() {
   }
 
   return (
-    <main style={{ padding: "2rem", maxWidth: activeTab === "descriptors" ? "600px" : "800px", margin: "0 auto" }}>
+    <main style={{ padding: "2rem", maxWidth: activeTab === "descriptors" ? "600px" : "none", width: activeTab === "descriptors" ? "auto" : "70%", margin: "0 auto" }}>
       <style>{`
         [contenteditable][data-placeholder]:empty:before {
           content: attr(data-placeholder);
@@ -571,6 +620,12 @@ export default function NewEntryPage() {
               >
                 <StrikethroughSIcon />
               </IconButton>
+              <IconButton
+                onClick={handleAddLink}
+                sx={{ border: "1px solid #ccc" }}
+              >
+                <InsertLinkIcon />
+              </IconButton>
               <Box ref={colorPickerRef} sx={{ position: "relative", display: "flex", alignItems: "center", gap: 1 }}>
                 <IconButton
                   onClick={() => setShowColorPicker(!showColorPicker)}
@@ -811,7 +866,7 @@ export default function NewEntryPage() {
 
         {activeTab === "preview" && (
           <div>
-            <h1 style={{ textAlign: "center", fontSize: "2.5rem", marginBottom: "0.5rem" }}>
+            <h1 style={{ textAlign: "center", fontSize: "60px", marginBottom: "0.5rem", fontFamily: "Inter, sans-serif", fontWeight: "550", color: "rgba(36, 53, 81, 1)" }}>
               {title || "Untitled"}
             </h1>
             <p style={{ textAlign: "center", fontSize: "1rem", color: "#666", marginBottom: "1.5rem" }}>

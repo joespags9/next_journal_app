@@ -22,7 +22,7 @@ export default function JournalDetailClient({ entry, parsedText }: JournalDetail
   const contentRef = useRef<HTMLDivElement>(null);
 
   return (
-    <main style={{ padding: "2rem", maxWidth: "800px", margin: "0 auto" }}>
+    <main style={{ padding: "2rem", width: "70%", margin: "0 auto" }}>
       <div style={{ display: "flex", justifyContent: "center", marginBottom: "1rem" }}>
         <ExportPdfButton
           contentRef={contentRef}
@@ -30,8 +30,8 @@ export default function JournalDetailClient({ entry, parsedText }: JournalDetail
         />
       </div>
 
-      <div ref={contentRef} style={{ backgroundColor: "white", padding: "2rem" }}>
-        <h1 style={{ textAlign: "center", fontSize: "2.5rem", marginBottom: "0.5rem" }}>
+      <div ref={contentRef} style={{ padding: "2rem" }}>
+        <h1 style={{ textAlign: "center", fontSize: "60px", marginBottom: "0.5rem", fontFamily: "Inter, sans-serif", fontWeight: "550", color: "rgba(36, 53, 81, 1)" }}>
           {entry.title}
         </h1>
         <p style={{ textAlign: "center", fontSize: "1rem", color: "#666", marginBottom: "1.5rem" }}>

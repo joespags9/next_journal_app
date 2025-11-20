@@ -23,31 +23,25 @@ export default function ExportPdfButton({ contentRef, filename }: ExportPdfButto
         scale: 2,
         useCORS: true,
         logging: false,
-        backgroundColor: "#ffffff",
+        backgroundColor: "rgba(224, 224, 220)",
+        width: contentRef.current.scrollWidth,
+        windowWidth: contentRef.current.scrollWidth,
       });
 
       const imgData = canvas.toDataURL("image/png");
       const pdf = new jsPDF({
         orientation: "portrait",
-        unit: "mm",
-        format: "a4",
+        unit: "px",
+        format: [canvas.width, canvas.height],
       });
-
-      const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = pdf.internal.pageSize.getHeight();
-      const imgWidth = canvas.width;
-      const imgHeight = canvas.height;
-      const ratio = Math.min(pdfWidth / imgWidth, pdfHeight / imgHeight);
-      const imgX = (pdfWidth - imgWidth * ratio) / 2;
-      const imgY = 10;
 
       pdf.addImage(
         imgData,
         "PNG",
-        imgX,
-        imgY,
-        imgWidth * ratio,
-        imgHeight * ratio
+        0,
+        0,
+        canvas.width,
+        canvas.height
       );
 
       pdf.save(`${filename}.pdf`);
