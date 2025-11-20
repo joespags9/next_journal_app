@@ -8,6 +8,7 @@ import FormatItalicIcon from "@mui/icons-material/FormatItalic";
 import FormatUnderlinedIcon from "@mui/icons-material/FormatUnderlined";
 import StrikethroughSIcon from "@mui/icons-material/StrikethroughS";
 import FormatColorTextIcon from "@mui/icons-material/FormatColorText";
+import InsertLinkIcon from "@mui/icons-material/InsertLink";
 
 export default function EditEntryPage({ params }: { params: Promise<{ id: string }> }) {
   const [id, setId] = useState<string | null>(null);
@@ -20,16 +21,14 @@ export default function EditEntryPage({ params }: { params: Promise<{ id: string
   const [activeTab, setActiveTab] = useState<"descriptors" | "text" | "preview">("descriptors");
   const [fontSize, setFontSize] = useState(16);
   const [fontFamily, setFontFamily] = useState("Roboto");
-  const [isBold, setIsBold] = useState(false);
-  const [isItalic, setIsItalic] = useState(false);
-  const [isUnderline, setIsUnderline] = useState(false);
-  const [isStrikethrough, setIsStrikethrough] = useState(false);
   const [textColor, setTextColor] = useState("#000000");
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [loading, setLoading] = useState(true);
   const colorPickerRef = useRef<HTMLDivElement>(null);
   const contentEditableRef = useRef<HTMLDivElement>(null);
   const previousTabRef = useRef<"descriptors" | "text" | "preview">("descriptors");
+  const savedSelectionRef = useRef<Range | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
 
   // Load existing entry data
@@ -78,76 +77,246 @@ export default function EditEntryPage({ params }: { params: Promise<{ id: string
   useEffect(() => {
     // Only rebuild if we're switching TO the text tab from another tab
     if (activeTab === "text" && previousTabRef.current !== "text" && contentEditableRef.current) {
-      // Clear and rebuild the content
-      contentEditableRef.current.innerHTML = "";
-
-      // Parse the text and recreate the content with images
-      if (text) {
-        const imageRegex = /!\[([^\]]*)\]\(([^)]+)\)/g;
-        let lastIndex = 0;
-        let match;
-
-        while ((match = imageRegex.exec(text)) !== null) {
-          // Add text before the image
-          if (match.index > lastIndex) {
-            const textNode = document.createTextNode(text.substring(lastIndex, match.index));
-            contentEditableRef.current.appendChild(textNode);
-          }
-
-          // Add the image
-          const img = document.createElement("img");
-          img.src = match[2];
-          img.style.maxWidth = "100%";
-          img.style.height = "auto";
-          img.style.margin = "1rem 0";
-          img.style.borderRadius = "4px";
-          img.style.display = "block";
-          img.style.cursor = "pointer";
-          img.draggable = false;
-
-          // Make image resizable
-          img.addEventListener("mousedown", (evt) => {
-            evt.preventDefault();
-            const startX = evt.clientX;
-            const startWidth = img.offsetWidth;
-            const container = contentEditableRef.current;
-            if (!container) return;
-            const containerWidth = container.offsetWidth;
-
-            const handleMouseMove = (moveEvt: MouseEvent) => {
-              const deltaX = moveEvt.clientX - startX;
-              const newWidth = startWidth + deltaX;
-              if (newWidth > 50 && newWidth <= containerWidth) {
-                img.style.width = newWidth + "px";
-                img.style.maxWidth = "100%";
-              }
-            };
-
-            const handleMouseUp = () => {
-              document.removeEventListener("mousemove", handleMouseMove);
-              document.removeEventListener("mouseup", handleMouseUp);
-            };
-
-            document.addEventListener("mousemove", handleMouseMove);
-            document.addEventListener("mouseup", handleMouseUp);
-          });
-
-          contentEditableRef.current.appendChild(img);
-          lastIndex = imageRegex.lastIndex;
-        }
-
-        // Add remaining text after the last image
-        if (lastIndex < text.length) {
-          const textNode = document.createTextNode(text.substring(lastIndex));
-          contentEditableRef.current.appendChild(textNode);
-        }
-      }
+      // Set the HTML directly to preserve all formatting
+      contentEditableRef.current.innerHTML = text;
     }
 
     // Update the previous tab
     previousTabRef.current = activeTab;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab]);
+
+  const applyFormatting = (tagName: string) => {
+    // Use saved selection if available
+    const range = savedSelectionRef.current;
+    if (!range || range.collapsed) {
+      return;
+    }
+
+    // Focus the contentEditable
+    contentEditableRef.current?.focus();
+
+    // Restore the selection
+    const selection = window.getSelection();
+    if (selection) {
+      selection.removeAllRanges();
+      selection.addRange(range.cloneRange());
+    }
+
+    // Check if we're inside the tag already
+    let currentNode: Node | null = range.commonAncestorContainer;
+    let isFormatted = false;
+    let formattedElement: HTMLElement | null = null;
+
+    // Walk up the tree to find if we're inside the tag
+    while (currentNode && currentNode !== contentEditableRef.current) {
+      if (currentNode.nodeType === Node.ELEMENT_NODE) {
+        const element = currentNode as HTMLElement;
+        if (element.nodeName.toLowerCase() === tagName) {
+          isFormatted = true;
+          formattedElement = element;
+          break;
+        }
+      }
+      currentNode = currentNode.parentNode;
+    }
+
+    if (isFormatted && formattedElement) {
+      // Remove formatting: unwrap the element
+      const parent = formattedElement.parentNode;
+      if (parent) {
+        while (formattedElement.firstChild) {
+          parent.insertBefore(formattedElement.firstChild, formattedElement);
+        }
+        parent.removeChild(formattedElement);
+      }
+    } else {
+      // Apply formatting: wrap selection in tag
+      const selectedContent = range.extractContents();
+      const element = document.createElement(tagName);
+      element.appendChild(selectedContent);
+      range.insertNode(element);
+
+      // Save new selection and restore it
+      const newRange = document.createRange();
+      newRange.selectNodeContents(element);
+      if (selection) {
+        selection.removeAllRanges();
+        selection.addRange(newRange);
+      }
+      savedSelectionRef.current = newRange.cloneRange();
+    }
+
+    // Update state
+    if (contentEditableRef.current) {
+      setText(contentEditableRef.current.innerHTML);
+    }
+  };
+
+  const applyFontSize = (size: number) => {
+    const range = savedSelectionRef.current;
+    if (!range || range.collapsed) {
+      return;
+    }
+
+    contentEditableRef.current?.focus();
+
+    const selection = window.getSelection();
+    if (selection) {
+      selection.removeAllRanges();
+      selection.addRange(range);
+    }
+
+    const selectedContent = range.extractContents();
+    const span = document.createElement("span");
+    span.style.fontSize = `${size}px`;
+    span.appendChild(selectedContent);
+
+    range.insertNode(span);
+
+    if (contentEditableRef.current) {
+      setText(contentEditableRef.current.innerHTML);
+    }
+
+    const newRange = document.createRange();
+    newRange.selectNodeContents(span);
+    if (selection) {
+      selection.removeAllRanges();
+      selection.addRange(newRange);
+    }
+    savedSelectionRef.current = newRange.cloneRange();
+  };
+
+  const applyFontFamily = (font: string) => {
+    const range = savedSelectionRef.current;
+    if (!range || range.collapsed) {
+      return;
+    }
+
+    contentEditableRef.current?.focus();
+
+    const selection = window.getSelection();
+    if (selection) {
+      selection.removeAllRanges();
+      selection.addRange(range);
+    }
+
+    const selectedContent = range.extractContents();
+    const span = document.createElement("span");
+    span.style.fontFamily = font;
+    span.appendChild(selectedContent);
+
+    range.insertNode(span);
+
+    if (contentEditableRef.current) {
+      setText(contentEditableRef.current.innerHTML);
+    }
+
+    const newRange = document.createRange();
+    newRange.selectNodeContents(span);
+    if (selection) {
+      selection.removeAllRanges();
+      selection.addRange(newRange);
+    }
+    savedSelectionRef.current = newRange.cloneRange();
+  };
+
+  const applyColor = (color: string) => {
+    // Use saved selection if available
+    const range = savedSelectionRef.current;
+    if (!range || range.collapsed) {
+      return;
+    }
+
+    // Focus the contentEditable
+    contentEditableRef.current?.focus();
+
+    // Restore the selection
+    const selection = window.getSelection();
+    if (selection) {
+      selection.removeAllRanges();
+      selection.addRange(range);
+    }
+
+    // Get the selected content
+    const selectedContent = range.extractContents();
+
+    // Create a span with the color
+    const span = document.createElement("span");
+    span.style.color = color;
+    span.appendChild(selectedContent);
+
+    // Insert the colored span
+    range.insertNode(span);
+
+    // Update state
+    if (contentEditableRef.current) {
+      setText(contentEditableRef.current.innerHTML);
+    }
+
+    // Save new selection and restore it
+    const newRange = document.createRange();
+    newRange.selectNodeContents(span);
+    if (selection) {
+      selection.removeAllRanges();
+      selection.addRange(newRange);
+    }
+    savedSelectionRef.current = newRange.cloneRange();
+  };
+
+  const handleAddLink = () => {
+    const url = prompt("Enter the URL:");
+    if (!url) return;
+
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0) {
+      alert("Please select some text first");
+      return;
+    }
+
+    const range = selection.getRangeAt(0);
+    const selectedText = range.toString();
+
+    if (!selectedText) {
+      alert("Please select some text first");
+      return;
+    }
+
+    const link = document.createElement("a");
+    link.href = url;
+    link.textContent = selectedText;
+    link.style.color = "#0070f3";
+    link.style.textDecoration = "underline";
+    link.target = "_blank";
+
+    range.deleteContents();
+    range.insertNode(link);
+
+    // Update the text state with HTML
+    if (contentEditableRef.current) {
+      setText(contentEditableRef.current.innerHTML);
+    }
+  };
+
+  const handleDropAreaClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (files && files[0]) {
+      const file = files[0];
+      if (file.type.startsWith("image/")) {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          if (event.target?.result) {
+            setImage(event.target.result as string);
+          }
+        };
+        reader.readAsDataURL(file);
+      }
+    }
+  };
 
   // Material-UI default font families
   const fontFamilies = [
@@ -230,102 +399,6 @@ export default function EditEntryPage({ params }: { params: Promise<{ id: string
     e.preventDefault();
   };
 
-  const handleTextAreaDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-
-    const textarea = e.target as HTMLTextAreaElement;
-    const cursorPosition = textarea.selectionStart;
-    const textBefore = text.substring(0, cursorPosition);
-    const textAfter = text.substring(cursorPosition);
-
-    // Check if it's a file being dragged
-    const files = e.dataTransfer.files;
-    if (files && files[0]) {
-      const file = files[0];
-      if (file.type.startsWith("image/")) {
-        // Convert image file to base64 data URL
-        const reader = new FileReader();
-        reader.onload = (event) => {
-          if (event.target?.result) {
-            const imageData = event.target.result as string;
-            const imageMarkdown = `\n![Image](${imageData})\n`;
-            setText(textBefore + imageMarkdown + textAfter);
-          }
-        };
-        reader.readAsDataURL(file);
-      }
-    } else {
-      // Check if it's an image URL being dragged (from a webpage)
-      const imageUrl = e.dataTransfer.getData("text/html");
-      const urlMatch = imageUrl.match(/src="([^"]+)"/);
-
-      if (urlMatch && urlMatch[1]) {
-        const imageSrc = urlMatch[1];
-        const imageMarkdown = `\n![Image](${imageSrc})\n`;
-        setText(textBefore + imageMarkdown + textAfter);
-      } else {
-        // Try getting plain text URL
-        const plainUrl = e.dataTransfer.getData("text/plain");
-        if (plainUrl && (plainUrl.startsWith("http") || plainUrl.startsWith("data:"))) {
-          const imageMarkdown = `\n![Image](${plainUrl})\n`;
-          setText(textBefore + imageMarkdown + textAfter);
-        }
-      }
-    }
-  };
-
-  // Function to parse markdown images and render preview
-  function parseTextWithImages(text: string) {
-    if (!text) return null;
-
-    const imageRegex = /!\[([^\]]*)\]\(([^)]+)\)/g;
-    const parts = [];
-    let lastIndex = 0;
-    let match;
-
-    while ((match = imageRegex.exec(text)) !== null) {
-      // Add text before the image
-      if (match.index > lastIndex) {
-        parts.push(
-          <span key={`text-${lastIndex}`}>
-            {text.substring(lastIndex, match.index)}
-          </span>
-        );
-      }
-
-      // Add the image
-      const altText = match[1];
-      const imageSrc = match[2];
-      parts.push(
-        <img
-          key={`img-${match.index}`}
-          src={imageSrc}
-          alt={altText}
-          style={{
-            maxWidth: "100%",
-            height: "auto",
-            margin: "1rem 0",
-            borderRadius: "4px",
-            display: "block"
-          }}
-        />
-      );
-
-      lastIndex = imageRegex.lastIndex;
-    }
-
-    // Add remaining text after the last image
-    if (lastIndex < text.length) {
-      parts.push(
-        <span key={`text-${lastIndex}`}>
-          {text.substring(lastIndex)}
-        </span>
-      );
-    }
-
-    return parts.length > 0 ? parts : text;
-  }
-
   if (loading) {
     return (
       <main style={{ padding: "2rem", maxWidth: "800px", margin: "0 auto", textAlign: "center" }}>
@@ -335,7 +408,7 @@ export default function EditEntryPage({ params }: { params: Promise<{ id: string
   }
 
   return (
-    <main style={{ padding: "2rem", maxWidth: activeTab === "descriptors" ? "600px" : "800px", margin: "0 auto" }}>
+    <main style={{ padding: "2rem", maxWidth: activeTab === "descriptors" ? "600px" : "none", width: activeTab === "descriptors" ? "auto" : "70%", margin: "0 auto" }}>
       <style>{`
         [contenteditable][data-placeholder]:empty:before {
           content: attr(data-placeholder);
@@ -485,6 +558,7 @@ export default function EditEntryPage({ params }: { params: Promise<{ id: string
                 onDragOver={handleDragOver}
                 onDragLeave={handleDragLeave}
                 onDrop={handleDrop}
+                onClick={handleDropAreaClick}
                 style={{
                   flex: "0 0 66.666%",
                   minHeight: "0",
@@ -511,10 +585,17 @@ export default function EditEntryPage({ params }: { params: Promise<{ id: string
                   />
                 ) : (
                   <p style={{ color: "#999", fontSize: "0.9rem", textAlign: "center", padding: "1rem" }}>
-                    Drop Image Here
+                    Drop Image Here or Click to Select
                   </p>
                 )}
               </div>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleFileSelect}
+                style={{ display: "none" }}
+              />
             </div>
           </div>
         )}
@@ -528,7 +609,10 @@ export default function EditEntryPage({ params }: { params: Promise<{ id: string
                   labelId="font-family-label"
                   value={fontFamily}
                   label="Font"
-                  onChange={(e) => setFontFamily(e.target.value)}
+                  onChange={(e) => {
+                    setFontFamily(e.target.value);
+                    applyFontFamily(e.target.value);
+                  }}
                 >
                   {fontFamilies.map((font) => (
                     <MenuItem key={font} value={font} style={{ fontFamily: font }}>
@@ -543,7 +627,10 @@ export default function EditEntryPage({ params }: { params: Promise<{ id: string
                   labelId="font-size-label"
                   value={fontSize}
                   label="Size"
-                  onChange={(e) => setFontSize(Number(e.target.value))}
+                  onChange={(e) => {
+                    setFontSize(Number(e.target.value));
+                    applyFontSize(Number(e.target.value));
+                  }}
                 >
                   {[8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32].map((size) => (
                     <MenuItem key={size} value={size}>{size}</MenuItem>
@@ -551,32 +638,34 @@ export default function EditEntryPage({ params }: { params: Promise<{ id: string
                 </Select>
               </FormControl>
               <IconButton
-                onClick={() => setIsBold(!isBold)}
-                color={isBold ? "primary" : "default"}
+                onClick={() => applyFormatting('b')}
                 sx={{ border: "1px solid #ccc" }}
               >
                 <FormatBoldIcon />
               </IconButton>
               <IconButton
-                onClick={() => setIsItalic(!isItalic)}
-                color={isItalic ? "primary" : "default"}
+                onClick={() => applyFormatting('i')}
                 sx={{ border: "1px solid #ccc" }}
               >
                 <FormatItalicIcon />
               </IconButton>
               <IconButton
-                onClick={() => setIsUnderline(!isUnderline)}
-                color={isUnderline ? "primary" : "default"}
+                onClick={() => applyFormatting('u')}
                 sx={{ border: "1px solid #ccc" }}
               >
                 <FormatUnderlinedIcon />
               </IconButton>
               <IconButton
-                onClick={() => setIsStrikethrough(!isStrikethrough)}
-                color={isStrikethrough ? "primary" : "default"}
+                onClick={() => applyFormatting('s')}
                 sx={{ border: "1px solid #ccc" }}
               >
                 <StrikethroughSIcon />
+              </IconButton>
+              <IconButton
+                onClick={handleAddLink}
+                sx={{ border: "1px solid #ccc" }}
+              >
+                <InsertLinkIcon />
               </IconButton>
               <Box ref={colorPickerRef} sx={{ position: "relative", display: "flex", alignItems: "center", gap: 1 }}>
                 <IconButton
@@ -608,7 +697,10 @@ export default function EditEntryPage({ params }: { params: Promise<{ id: string
                       {["#000000", "#FF0000", "#00FF00", "#0000FF", "#FFFF00", "#FF00FF", "#00FFFF", "#FFA500", "#800080", "#008000", "#808080", "#FFFFFF"].map((color) => (
                         <div
                           key={color}
-                          onClick={() => setTextColor(color)}
+                          onClick={() => {
+                            setTextColor(color);
+                            applyColor(color);
+                          }}
                           style={{
                             width: "24px",
                             height: "24px",
@@ -627,7 +719,10 @@ export default function EditEntryPage({ params }: { params: Promise<{ id: string
                     <input
                       type="color"
                       value={textColor}
-                      onChange={(e) => setTextColor(e.target.value)}
+                      onChange={(e) => {
+                        setTextColor(e.target.value);
+                        applyColor(e.target.value);
+                      }}
                       style={{ width: "100%", height: "30px", cursor: "pointer", border: "1px solid #ccc", borderRadius: "4px" }}
                     />
                   </Box>
@@ -637,21 +732,17 @@ export default function EditEntryPage({ params }: { params: Promise<{ id: string
             <div
               ref={contentEditableRef}
               contentEditable
+              onSelect={() => {
+                // Save the selection whenever user selects text
+                const selection = window.getSelection();
+                if (selection && selection.rangeCount > 0) {
+                  savedSelectionRef.current = selection.getRangeAt(0).cloneRange();
+                }
+              }}
               onInput={(e) => {
                 const target = e.currentTarget;
-                // Extract text and images as markdown
-                let content = "";
-                target.childNodes.forEach(node => {
-                  if (node.nodeName === "IMG") {
-                    const img = node as HTMLImageElement;
-                    content += `\n![Image](${img.src})\n`;
-                  } else if (node.nodeName === "BR") {
-                    content += "\n";
-                  } else {
-                    content += node.textContent || "";
-                  }
-                });
-                setText(content);
+                // Save the innerHTML to preserve styling
+                setText(target.innerHTML);
               }}
               onDragOver={handleTextAreaDragOver}
               onDrop={(e) => {
@@ -801,12 +892,6 @@ export default function EditEntryPage({ params }: { params: Promise<{ id: string
                 padding: "0.75rem",
                 border: "2px solid #ccc",
                 borderRadius: "4px",
-                fontFamily: fontFamily,
-                fontSize: `${fontSize}px`,
-                fontWeight: isBold ? "bold" : "normal",
-                fontStyle: isItalic ? "italic" : "normal",
-                textDecoration: `${isUnderline ? "underline" : ""} ${isStrikethrough ? "line-through" : ""}`.trim() || "none",
-                color: textColor,
                 backgroundColor: "white",
                 whiteSpace: "pre-wrap",
                 overflowY: "auto"
@@ -818,7 +903,7 @@ export default function EditEntryPage({ params }: { params: Promise<{ id: string
 
         {activeTab === "preview" && (
           <div>
-            <h1 style={{ textAlign: "center", fontSize: "2.5rem", marginBottom: "0.5rem" }}>
+            <h1 style={{ textAlign: "center", fontSize: "60px", marginBottom: "0.5rem", fontFamily: "Inter, sans-serif", fontWeight: "550", color: "rgba(36, 53, 81, 1)" }}>
               {title || "Untitled"}
             </h1>
             <p style={{ textAlign: "center", fontSize: "1rem", color: "#666", marginBottom: "1.5rem" }}>
@@ -836,9 +921,10 @@ export default function EditEntryPage({ params }: { params: Promise<{ id: string
                 {caption}
               </p>
             )}
-            <div style={{ whiteSpace: "pre-wrap" }}>
-              {parseTextWithImages(text)}
-            </div>
+            <div
+              style={{ whiteSpace: "pre-wrap" }}
+              dangerouslySetInnerHTML={{ __html: text }}
+            />
             <div style={{ display: "flex", justifyContent: "center", marginTop: "2rem" }}>
               <button
                 type="submit"

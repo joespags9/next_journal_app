@@ -15,10 +15,9 @@ interface Entry {
 
 interface JournalDetailClientProps {
   entry: Entry;
-  parsedText: React.ReactNode;
 }
 
-export default function JournalDetailClient({ entry, parsedText }: JournalDetailClientProps) {
+export default function JournalDetailClient({ entry }: JournalDetailClientProps) {
   const contentRef = useRef<HTMLDivElement>(null);
 
   return (
@@ -50,9 +49,10 @@ export default function JournalDetailClient({ entry, parsedText }: JournalDetail
             {entry.caption}
           </p>
         )}
-        <div style={{ whiteSpace: "pre-wrap" }}>
-          {parsedText}
-        </div>
+        <div
+          style={{ whiteSpace: "pre-wrap" }}
+          dangerouslySetInnerHTML={{ __html: entry.text || "" }}
+        />
       </div>
     </main>
   );

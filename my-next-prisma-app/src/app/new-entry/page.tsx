@@ -20,16 +20,13 @@ export default function NewEntryPage() {
   const [activeTab, setActiveTab] = useState<"descriptors" | "text" | "preview">("descriptors");
   const [fontSize, setFontSize] = useState(16);
   const [fontFamily, setFontFamily] = useState("Roboto");
-  const [isBold, setIsBold] = useState(false);
-  const [isItalic, setIsItalic] = useState(false);
-  const [isUnderline, setIsUnderline] = useState(false);
-  const [isStrikethrough, setIsStrikethrough] = useState(false);
   const [textColor, setTextColor] = useState("#000000");
   const [showColorPicker, setShowColorPicker] = useState(false);
   const colorPickerRef = useRef<HTMLDivElement>(null);
   const contentEditableRef = useRef<HTMLDivElement>(null);
   const previousTabRef = useRef<"descriptors" | "text" | "preview">("descriptors");
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const savedSelectionRef = useRef<Range | null>(null);
   const router = useRouter();
 
   // Close color picker when clicking outside
@@ -51,72 +48,13 @@ export default function NewEntryPage() {
 
   // Sync contentEditable with text state when switching TO the text tab
   useEffect(() => {
+    console.log('Tab changed to:', activeTab);
+    console.log('Current text state:', text);
+
     // Only rebuild if we're switching TO the text tab from another tab
     if (activeTab === "text" && previousTabRef.current !== "text" && contentEditableRef.current) {
-      // Clear and rebuild the content
-      contentEditableRef.current.innerHTML = "";
-
-      // Parse the text and recreate the content with images
-      if (text) {
-        const imageRegex = /!\[([^\]]*)\]\(([^)]+)\)/g;
-        let lastIndex = 0;
-        let match;
-
-        while ((match = imageRegex.exec(text)) !== null) {
-          // Add text before the image
-          if (match.index > lastIndex) {
-            const textNode = document.createTextNode(text.substring(lastIndex, match.index));
-            contentEditableRef.current.appendChild(textNode);
-          }
-
-          // Add the image
-          const img = document.createElement("img");
-          img.src = match[2];
-          img.style.maxWidth = "100%";
-          img.style.height = "auto";
-          img.style.margin = "1rem 0";
-          img.style.borderRadius = "4px";
-          img.style.display = "block";
-          img.style.cursor = "pointer";
-          img.draggable = false;
-
-          // Make image resizable
-          img.addEventListener("mousedown", (evt) => {
-            evt.preventDefault();
-            const startX = evt.clientX;
-            const startWidth = img.offsetWidth;
-            const container = contentEditableRef.current;
-            if (!container) return;
-            const containerWidth = container.offsetWidth;
-
-            const handleMouseMove = (moveEvt: MouseEvent) => {
-              const deltaX = moveEvt.clientX - startX;
-              const newWidth = startWidth + deltaX;
-              if (newWidth > 50 && newWidth <= containerWidth) {
-                img.style.width = newWidth + "px";
-                img.style.maxWidth = "100%";
-              }
-            };
-
-            const handleMouseUp = () => {
-              document.removeEventListener("mousemove", handleMouseMove);
-              document.removeEventListener("mouseup", handleMouseUp);
-            };
-
-            document.addEventListener("mousemove", handleMouseMove);
-            document.addEventListener("mouseup", handleMouseUp);
-          });
-
-          contentEditableRef.current.appendChild(img);
-          lastIndex = imageRegex.lastIndex;
-        }
-
-        // Add remaining text after the last image
-        if (lastIndex < text.length) {
-          const textNode = document.createTextNode(text.substring(lastIndex));
-          contentEditableRef.current.appendChild(textNode);
-        }
-      }
+      // Set the HTML directly to preserve all formatting
+      contentEditableRef.current.innerHTML = text;
     }
 
     // Update the previous tab
@@ -220,6 +158,194 @@ export default function NewEntryPage() {
     fileInputRef.current?.click();
   };
 
+  const applyFormatting = (tagName: string) => {
+    // Use saved selection if available
+    const range = savedSelectionRef.current;
+    if (!range || range.collapsed) {
+      console.log('No saved selection or range is collapsed');
+      return;
+    }
+
+    console.log('Applying formatting:', tagName);
+    console.log('Selected text:', range.toString());
+
+    // Focus the contentEditable
+    contentEditableRef.current?.focus();
+
+    // Restore the selection
+    const selection = window.getSelection();
+    if (selection) {
+      selection.removeAllRanges();
+      selection.addRange(range.cloneRange());
+    }
+
+    // Check if we're inside the tag already
+    let currentNode: Node | null = range.commonAncestorContainer;
+    let isFormatted = false;
+    let formattedElement: HTMLElement | null = null;
+
+    // Walk up the tree to find if we're inside the tag
+    while (currentNode && currentNode !== contentEditableRef.current) {
+      if (currentNode.nodeType === Node.ELEMENT_NODE) {
+        const element = currentNode as HTMLElement;
+        if (element.nodeName.toLowerCase() === tagName) {
+          isFormatted = true;
+          formattedElement = element;
+          break;
+        }
+      }
+      currentNode = currentNode.parentNode;
+    }
+
+    if (isFormatted && formattedElement) {
+      // Remove formatting: unwrap the element
+      const parent = formattedElement.parentNode;
+      if (parent) {
+        while (formattedElement.firstChild) {
+          parent.insertBefore(formattedElement.firstChild, formattedElement);
+        }
+        parent.removeChild(formattedElement);
+      }
+    } else {
+      // Apply formatting: wrap selection in tag
+      const selectedContent = range.extractContents();
+      const element = document.createElement(tagName);
+      element.appendChild(selectedContent);
+      range.insertNode(element);
+
+      // Save new selection and restore it
+      const newRange = document.createRange();
+      newRange.selectNodeContents(element);
+      if (selection) {
+        selection.removeAllRanges();
+        selection.addRange(newRange);
+      }
+      savedSelectionRef.current = newRange.cloneRange();
+    }
+
+    // Update state
+    if (contentEditableRef.current) {
+      console.log('Updated innerHTML:', contentEditableRef.current.innerHTML);
+      setText(contentEditableRef.current.innerHTML);
+    }
+  };
+
+  const applyFontSize = (size: number) => {
+    const range = savedSelectionRef.current;
+    if (!range || range.collapsed) {
+      return;
+    }
+
+    contentEditableRef.current?.focus();
+
+    const selection = window.getSelection();
+    if (selection) {
+      selection.removeAllRanges();
+      selection.addRange(range);
+    }
+
+    const selectedContent = range.extractContents();
+    const span = document.createElement("span");
+    span.style.fontSize = `${size}px`;
+    span.appendChild(selectedContent);
+
+    range.insertNode(span);
+
+    if (contentEditableRef.current) {
+      setText(contentEditableRef.current.innerHTML);
+    }
+
+    const newRange = document.createRange();
+    newRange.selectNodeContents(span);
+    if (selection) {
+      selection.removeAllRanges();
+      selection.addRange(newRange);
+    }
+    savedSelectionRef.current = newRange.cloneRange();
+  };
+
+  const applyFontFamily = (font: string) => {
+    const range = savedSelectionRef.current;
+    if (!range || range.collapsed) {
+      return;
+    }
+
+    contentEditableRef.current?.focus();
+
+    const selection = window.getSelection();
+    if (selection) {
+      selection.removeAllRanges();
+      selection.addRange(range);
+    }
+
+    const selectedContent = range.extractContents();
+    const span = document.createElement("span");
+    span.style.fontFamily = font;
+    span.appendChild(selectedContent);
+
+    range.insertNode(span);
+
+    if (contentEditableRef.current) {
+      setText(contentEditableRef.current.innerHTML);
+    }
+
+    const newRange = document.createRange();
+    newRange.selectNodeContents(span);
+    if (selection) {
+      selection.removeAllRanges();
+      selection.addRange(newRange);
+    }
+    savedSelectionRef.current = newRange.cloneRange();
+  };
+
+  const applyColor = (color: string) => {
+    // Use saved selection if available
+    const range = savedSelectionRef.current;
+    if (!range || range.collapsed) {
+      console.log('No saved selection for color or range is collapsed');
+      return;
+    }
+
+    console.log('Applying color:', color);
+    console.log('Selected text:', range.toString());
+
+    // Focus the contentEditable
+    contentEditableRef.current?.focus();
+
+    // Restore the selection
+    const selection = window.getSelection();
+    if (selection) {
+      selection.removeAllRanges();
+      selection.addRange(range);
+    }
+
+    // Get the selected content
+    const selectedContent = range.extractContents();
+
+    // Create a span with the color
+    const span = document.createElement("span");
+    span.style.color = color;
+    span.appendChild(selectedContent);
+
+    // Insert the colored span
+    range.insertNode(span);
+
+    // Update state
+    if (contentEditableRef.current) {
+      console.log('Updated innerHTML after color:', contentEditableRef.current.innerHTML);
+      setText(contentEditableRef.current.innerHTML);
+    }
+
+    // Save new selection and restore it
+    const newRange = document.createRange();
+    newRange.selectNodeContents(span);
+    if (selection) {
+      selection.removeAllRanges();
+      selection.addRange(newRange);
+    }
+    savedSelectionRef.current = newRange.cloneRange();
+  };
+
   const handleAddLink = () => {
     const url = prompt("Enter the URL:");
     if (!url) return;
@@ -248,23 +374,9 @@ export default function NewEntryPage() {
     range.deleteContents();
     range.insertNode(link);
 
-    // Update the text state
+    // Update the text state with HTML
     if (contentEditableRef.current) {
-      let content = "";
-      contentEditableRef.current.childNodes.forEach(node => {
-        if (node.nodeName === "A") {
-          const anchor = node as HTMLAnchorElement;
-          content += `[${anchor.textContent}](${anchor.href})`;
-        } else if (node.nodeName === "IMG") {
-          const img = node as HTMLImageElement;
-          content += `\n![Image](${img.src})\n`;
-        } else if (node.nodeName === "BR") {
-          content += "\n";
-        } else {
-          content += node.textContent || "";
-        }
-      });
-      setText(content);
+      setText(contentEditableRef.current.innerHTML);
     }
   };
 
@@ -315,58 +427,6 @@ export default function NewEntryPage() {
       }
     }
   };
-
-  // Function to parse markdown images and render preview
-  function parseTextWithImages(text: string) {
-    if (!text) return null;
-
-    const imageRegex = /!\[([^\]]*)\]\(([^)]+)\)/g;
-    const parts = [];
-    let lastIndex = 0;
-    let match;
-
-    while ((match = imageRegex.exec(text)) !== null) {
-      // Add text before the image
-      if (match.index > lastIndex) {
-        parts.push(
-          <span key={`text-${lastIndex}`}>
-            {text.substring(lastIndex, match.index)}
-          </span>
-        );
-      }
-
-      // Add the image
-      const altText = match[1];
-      const imageSrc = match[2];
-      parts.push(
-        <img
-          key={`img-${match.index}`}
-          src={imageSrc}
-          alt={altText}
-          style={{
-            maxWidth: "100%",
-            height: "auto",
-            margin: "1rem 0",
-            borderRadius: "4px",
-            display: "block"
-          }}
-        />
-      );
-
-      lastIndex = imageRegex.lastIndex;
-    }
-
-    // Add remaining text after the last image
-    if (lastIndex < text.length) {
-      parts.push(
-        <span key={`text-${lastIndex}`}>
-          {text.substring(lastIndex)}
-        </span>
-      );
-    }
-
-    return parts.length > 0 ? parts : text;
-  }
 
   return (
     <main style={{ padding: "2rem", maxWidth: activeTab === "descriptors" ? "600px" : "none", width: activeTab === "descriptors" ? "auto" : "70%", margin: "0 auto" }}>
@@ -570,7 +630,10 @@ export default function NewEntryPage() {
                   labelId="font-family-label"
                   value={fontFamily}
                   label="Font"
-                  onChange={(e) => setFontFamily(e.target.value)}
+                  onChange={(e) => {
+                    setFontFamily(e.target.value);
+                    applyFontFamily(e.target.value);
+                  }}
                 >
                   {fontFamilies.map((font) => (
                     <MenuItem key={font} value={font} style={{ fontFamily: font }}>
@@ -585,7 +648,10 @@ export default function NewEntryPage() {
                   labelId="font-size-label"
                   value={fontSize}
                   label="Size"
-                  onChange={(e) => setFontSize(Number(e.target.value))}
+                  onChange={(e) => {
+                    setFontSize(Number(e.target.value));
+                    applyFontSize(Number(e.target.value));
+                  }}
                 >
                   {[8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32].map((size) => (
                     <MenuItem key={size} value={size}>{size}</MenuItem>
@@ -593,29 +659,25 @@ export default function NewEntryPage() {
                 </Select>
               </FormControl>
               <IconButton
-                onClick={() => setIsBold(!isBold)}
-                color={isBold ? "primary" : "default"}
+                onClick={() => applyFormatting('b')}
                 sx={{ border: "1px solid #ccc" }}
               >
                 <FormatBoldIcon />
               </IconButton>
               <IconButton
-                onClick={() => setIsItalic(!isItalic)}
-                color={isItalic ? "primary" : "default"}
+                onClick={() => applyFormatting('i')}
                 sx={{ border: "1px solid #ccc" }}
               >
                 <FormatItalicIcon />
               </IconButton>
               <IconButton
-                onClick={() => setIsUnderline(!isUnderline)}
-                color={isUnderline ? "primary" : "default"}
+                onClick={() => applyFormatting('u')}
                 sx={{ border: "1px solid #ccc" }}
               >
                 <FormatUnderlinedIcon />
               </IconButton>
               <IconButton
-                onClick={() => setIsStrikethrough(!isStrikethrough)}
-                color={isStrikethrough ? "primary" : "default"}
+                onClick={() => applyFormatting('s')}
                 sx={{ border: "1px solid #ccc" }}
               >
                 <StrikethroughSIcon />
@@ -656,7 +718,10 @@ export default function NewEntryPage() {
                       {["#000000", "#FF0000", "#00FF00", "#0000FF", "#FFFF00", "#FF00FF", "#00FFFF", "#FFA500", "#800080", "#008000", "#808080", "#FFFFFF"].map((color) => (
                         <div
                           key={color}
-                          onClick={() => setTextColor(color)}
+                          onClick={() => {
+                            setTextColor(color);
+                            applyColor(color);
+                          }}
                           style={{
                             width: "24px",
                             height: "24px",
@@ -675,7 +740,10 @@ export default function NewEntryPage() {
                     <input
                       type="color"
                       value={textColor}
-                      onChange={(e) => setTextColor(e.target.value)}
+                      onChange={(e) => {
+                        setTextColor(e.target.value);
+                        applyColor(e.target.value);
+                      }}
                       style={{ width: "100%", height: "30px", cursor: "pointer", border: "1px solid #ccc", borderRadius: "4px" }}
                     />
                   </Box>
@@ -685,21 +753,18 @@ export default function NewEntryPage() {
             <div
               ref={contentEditableRef}
               contentEditable
+              onSelect={() => {
+                // Save the selection whenever user selects text
+                const selection = window.getSelection();
+                if (selection && selection.rangeCount > 0) {
+                  savedSelectionRef.current = selection.getRangeAt(0).cloneRange();
+                  console.log('Selection saved:', savedSelectionRef.current.toString());
+                }
+              }}
               onInput={(e) => {
                 const target = e.currentTarget;
-                // Extract text and images as markdown
-                let content = "";
-                target.childNodes.forEach(node => {
-                  if (node.nodeName === "IMG") {
-                    const img = node as HTMLImageElement;
-                    content += `\n![Image](${img.src})\n`;
-                  } else if (node.nodeName === "BR") {
-                    content += "\n";
-                  } else {
-                    content += node.textContent || "";
-                  }
-                });
-                setText(content);
+                // Save the innerHTML to preserve styling
+                setText(target.innerHTML);
               }}
               onDragOver={handleTextAreaDragOver}
               onDrop={(e) => {
@@ -849,12 +914,6 @@ export default function NewEntryPage() {
                 padding: "0.75rem",
                 border: "2px solid #ccc",
                 borderRadius: "4px",
-                fontFamily: fontFamily,
-                fontSize: `${fontSize}px`,
-                fontWeight: isBold ? "bold" : "normal",
-                fontStyle: isItalic ? "italic" : "normal",
-                textDecoration: `${isUnderline ? "underline" : ""} ${isStrikethrough ? "line-through" : ""}`.trim() || "none",
-                color: textColor,
                 backgroundColor: "white",
                 whiteSpace: "pre-wrap",
                 overflowY: "auto"
@@ -884,9 +943,10 @@ export default function NewEntryPage() {
                 {caption}
               </p>
             )}
-            <div style={{ whiteSpace: "pre-wrap" }}>
-              {parseTextWithImages(text)}
-            </div>
+            <div
+              style={{ whiteSpace: "pre-wrap" }}
+              dangerouslySetInnerHTML={{ __html: text }}
+            />
             <div style={{ display: "flex", justifyContent: "center", marginTop: "2rem" }}>
               <button
                 type="submit"

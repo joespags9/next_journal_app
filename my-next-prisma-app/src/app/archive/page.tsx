@@ -16,13 +16,17 @@ type Entry = {
 
 export default function ArchivePage() {
   const [entries, setEntries] = useState<Entry[]>([]);
+  const [loading, setLoading] = useState(true);
   const router = useRouter();
 
   // Fetch entries
   useEffect(() => {
     fetch("/api/entries")
       .then((res) => res.json())
-      .then(setEntries);
+      .then((data) => {
+        setEntries(data);
+        setLoading(false);
+      });
   }, []);
 
   const handleDelete = async (e: React.MouseEvent, id: number) => {
@@ -53,6 +57,16 @@ export default function ArchivePage() {
     e.stopPropagation();
     router.push(`/edit-entry/${id}`);
   };
+
+  if (loading) {
+    return (
+      <main className="p-8 max-w-[1400px] mx-auto">
+        <div className="flex items-center justify-center min-h-[400px]">
+          <p className="text-xl text-gray-600">Loading...</p>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className="p-8 max-w-[1400px] mx-auto">
