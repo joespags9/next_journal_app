@@ -73,12 +73,60 @@ export default function EditEntryPage({ params }: { params: Promise<{ id: string
     };
   }, [showColorPicker]);
 
+  // Function to add resize listeners to all images
+  const addImageResizeListeners = () => {
+    if (!contentEditableRef.current) return;
+
+    const images = contentEditableRef.current.querySelectorAll('img');
+    images.forEach((img) => {
+      // Remove any existing listeners to prevent duplicates
+      img.replaceWith(img.cloneNode(true));
+    });
+
+    // Re-query after cloning
+    const freshImages = contentEditableRef.current.querySelectorAll('img');
+    freshImages.forEach((img) => {
+      const imgElement = img as HTMLImageElement;
+      imgElement.draggable = false;
+
+      imgElement.addEventListener("mousedown", (evt) => {
+        evt.preventDefault();
+        const startX = evt.clientX;
+        const startWidth = imgElement.offsetWidth;
+        const containerWidth = contentEditableRef.current?.offsetWidth || 0;
+
+        const handleMouseMove = (moveEvt: MouseEvent) => {
+          const deltaX = moveEvt.clientX - startX;
+          const newWidth = startWidth + deltaX;
+          if (newWidth > 50 && newWidth <= containerWidth) {
+            imgElement.style.width = newWidth + "px";
+            imgElement.style.maxWidth = "100%";
+          }
+        };
+
+        const handleMouseUp = () => {
+          document.removeEventListener("mousemove", handleMouseMove);
+          document.removeEventListener("mouseup", handleMouseUp);
+          // Update text state after resizing
+          if (contentEditableRef.current) {
+            setText(contentEditableRef.current.innerHTML);
+          }
+        };
+
+        document.addEventListener("mousemove", handleMouseMove);
+        document.addEventListener("mouseup", handleMouseUp);
+      });
+    });
+  };
+
   // Sync contentEditable with text state when switching TO the text tab
   useEffect(() => {
     // Only rebuild if we're switching TO the text tab from another tab
     if (activeTab === "text" && previousTabRef.current !== "text" && contentEditableRef.current) {
       // Set the HTML directly to preserve all formatting
       contentEditableRef.current.innerHTML = text;
+      // Reattach event listeners to images
+      addImageResizeListeners();
     }
 
     // Update the previous tab
@@ -748,14 +796,15 @@ export default function EditEntryPage({ params }: { params: Promise<{ id: string
               onDrop={(e) => {
                 e.preventDefault();
 
+                if (!contentEditableRef.current) return;
+
                 const files = e.dataTransfer.files;
                 if (files && files[0]) {
                   const file = files[0];
                   if (file.type.startsWith("image/")) {
                     const reader = new FileReader();
                     reader.onload = (event) => {
-                      if (event.target?.result) {
-                        const container = e.currentTarget;
+                      if (event.target?.result && contentEditableRef.current) {
                         const img = document.createElement("img");
                         img.src = event.target.result as string;
                         img.style.maxWidth = "100%";
@@ -773,7 +822,7 @@ export default function EditEntryPage({ params }: { params: Promise<{ id: string
                           evt.preventDefault();
                           const startX = evt.clientX;
                           const startWidth = img.offsetWidth;
-                          const containerWidth = container.offsetWidth;
+                          const containerWidth = contentEditableRef.current?.offsetWidth || 0;
 
                           const handleMouseMove = (moveEvt: MouseEvent) => {
                             const deltaX = moveEvt.clientX - startX;
@@ -793,13 +842,15 @@ export default function EditEntryPage({ params }: { params: Promise<{ id: string
                           document.addEventListener("mouseup", handleMouseUp);
                         });
 
-                        container.appendChild(img);
+                        contentEditableRef.current.appendChild(img);
+                        setText(contentEditableRef.current.innerHTML);
+                        // Reattach listeners to all images including the new one
+                        addImageResizeListeners();
                       }
                     };
                     reader.readAsDataURL(file);
                   }
                 } else {
-                  const container = e.currentTarget;
                   const imageUrl = e.dataTransfer.getData("text/html");
                   const urlMatch = imageUrl.match(/src="([^"]+)"/);
 
@@ -819,7 +870,7 @@ export default function EditEntryPage({ params }: { params: Promise<{ id: string
                       evt.preventDefault();
                       const startX = evt.clientX;
                       const startWidth = img.offsetWidth;
-                      const containerWidth = container.offsetWidth;
+                      const containerWidth = contentEditableRef.current?.offsetWidth || 0;
 
                       const handleMouseMove = (moveEvt: MouseEvent) => {
                         const deltaX = moveEvt.clientX - startX;
@@ -839,7 +890,10 @@ export default function EditEntryPage({ params }: { params: Promise<{ id: string
                       document.addEventListener("mouseup", handleMouseUp);
                     });
 
-                    container.appendChild(img);
+                    contentEditableRef.current.appendChild(img);
+                    setText(contentEditableRef.current.innerHTML);
+                    // Reattach listeners to all images including the new one
+                    addImageResizeListeners();
                   } else {
                     const plainUrl = e.dataTransfer.getData("text/plain");
                     if (plainUrl && (plainUrl.startsWith("http") || plainUrl.startsWith("data:"))) {
@@ -858,7 +912,7 @@ export default function EditEntryPage({ params }: { params: Promise<{ id: string
                         evt.preventDefault();
                         const startX = evt.clientX;
                         const startWidth = img.offsetWidth;
-                        const containerWidth = container.offsetWidth;
+                        const containerWidth = contentEditableRef.current?.offsetWidth || 0;
 
                         const handleMouseMove = (moveEvt: MouseEvent) => {
                           const deltaX = moveEvt.clientX - startX;
@@ -878,7 +932,10 @@ export default function EditEntryPage({ params }: { params: Promise<{ id: string
                         document.addEventListener("mouseup", handleMouseUp);
                       });
 
-                      container.appendChild(img);
+                      contentEditableRef.current.appendChild(img);
+                      setText(contentEditableRef.current.innerHTML);
+                      // Reattach listeners to all images including the new one
+                      addImageResizeListeners();
                     }
                   }
                 }
